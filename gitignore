@@ -1,0 +1,17 @@
+# CIFAR-10 download (~170MB) -- never commit the dataset itself.
+# torchvision re-downloads it automatically via load_raw_datasets(), so
+# nothing is lost by excluding this.
+data/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Local virtual environments, if either of you uses one
+venv/
+.venv/
+env/
