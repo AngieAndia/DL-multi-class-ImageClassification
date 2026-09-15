@@ -15,3 +15,7 @@ __pycache__/
 venv/
 .venv/
 env/
+
+# exclude data file because it is too large (> 100 Mb)
+
+/Users/lynnjassies/Documents/Courses/Semester_5/Deep_learning/Mid_term/DL-multi-class-ImageClassification/data/
