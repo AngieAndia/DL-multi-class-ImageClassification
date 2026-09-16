@@ -96,10 +96,14 @@ AUGMENTATIONS = {
     "strong": T.Compose([
         T.RandomCrop(32, padding=4),
         T.RandomHorizontalFlip(),
-        T.RandAugment(num_ops=2, magnitude=9),
+        # AutoAugment's CIFAR10 policy (Cubuk et al., 2019) was found by search
+        # directly on this dataset, unlike RandAugment's generic, un-searched
+        # policy -- since we aren't redoing that search ourselves, the
+        # dataset-specific found policy is the better-justified citation here.
+        T.AutoAugment(T.AutoAugmentPolicy.CIFAR10),
         T.ToTensor(),
         T.Normalize(CIFAR_MEAN, CIFAR_STD),
-        T.RandomErasing(p=0.25),
+        T.RandomErasing(p=0.25),  # Zhong et al., 2020 -- unchanged, last step
     ]),
 }
 

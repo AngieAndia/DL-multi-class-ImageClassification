@@ -43,10 +43,14 @@ SPLIT_CACHE_PATH = "val_split_indices.npz"
 # Hutter, 2019). A smaller weight_decay is used for Adam (1e-4) than for
 # SGD/AdamW (5e-4) to keep effective regularization comparable -- state this
 # explicitly as a controlled design choice in the Methods section.
+#
+# SGD uses Nesterov-accelerated momentum (Sutskever et al., 2013), matching
+# the original training protocols of the architectures we cite (He et al.,
+# 2016; Huang et al., 2017), which also use Nesterov SGD.
 # ---------------------------------------------------------------------------
 
 OPTIMIZER_DEFAULTS = {
-    "sgd": {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4},
+    "sgd": {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "nesterov": True},
     "adam": {"lr": 0.001, "weight_decay": 1e-4},
     "adamw": {"lr": 0.001, "weight_decay": 5e-4},
 }
