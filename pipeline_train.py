@@ -33,6 +33,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         total_loss += loss.item() * images.size(0)
@@ -128,7 +129,18 @@ def run_training(
     n_params = count_params(model)
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(config["optimizer"], model.parameters())
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    warmup_epochs = 3
+    warmup_scheduler = optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.01, total_iters=warmup_epochs
+    )
+    cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs - warmup_epochs
+    )
+    scheduler = optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_epochs],
+    )
     stopper = EarlyStopper(patience=patience)
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
