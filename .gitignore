@@ -1,0 +1,21 @@
+# CIFAR-10 download (~170MB) -- never commit the dataset itself.
+# torchvision re-downloads it automatically via load_raw_datasets(), so
+# nothing is lost by excluding this.
+data/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Local virtual environments, if either of you uses one
+venv/
+.venv/
+env/
+
+# exclude data file because it is too large (> 100 Mb)
+
+/Users/lynnjassies/Documents/Courses/Semester_5/Deep_learning/Mid_term/DL-multi-class-ImageClassification/data/
