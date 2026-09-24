@@ -22,19 +22,27 @@ from pipeline_data import DEVICE, make_loaders, set_seed
 from pipeline_models import ARCHITECTURES, build_optimizer, count_params
 from pipeline_metrics import compute_metrics
 
+USE_AMP = DEVICE.type == "cuda"
+AMP_DTYPE = (torch.bfloat16 if USE_AMP and torch.cuda.is_bf16_supported()
+             else torch.float16)
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
+
+def train_one_epoch(model, loader, optimizer, criterion, device, scaler):
     model.train()
     total_loss, total_correct, total_n = 0.0, 0, 0
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
 
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        with torch.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=USE_AMP):
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+        scaler.scale(loss).backward()
+        #scaler.unscale_(optimizer)
+
+        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        scaler.step(optimizer)
+        scaler.update()
 
         total_loss += loss.item() * images.size(0)
         total_correct += (outputs.argmax(dim=1) == labels).sum().item()
@@ -49,8 +57,9 @@ def evaluate(model, loader, criterion, device):
     all_preds, all_labels = [], []
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
-        outputs = model(images)
-        loss = criterion(outputs, labels)
+        with torch.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=USE_AMP):
+            outputs = model(images)
+            loss = criterion(outputs, labels)
 
         total_loss += loss.item() * images.size(0)
         preds = outputs.argmax(dim=1)
@@ -129,6 +138,7 @@ def run_training(
     n_params = count_params(model)
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(config["optimizer"], model.parameters())
+    scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP and AMP_DTYPE == torch.float16)
     warmup_epochs = 3
     warmup_scheduler = optim.lr_scheduler.LinearLR(
         optimizer, start_factor=0.01, total_iters=warmup_epochs
@@ -149,7 +159,7 @@ def run_training(
     early_stopped = False
 
     for epoch in range(epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device)
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
         val_loss, val_acc, _, _ = evaluate(model, val_loader, criterion, device)
         scheduler.step()
         epochs_run = epoch + 1
@@ -204,5 +214,6 @@ def run_training(
         "confusion_matrix": json.dumps(metrics["confusion_matrix"]),
         "history": json.dumps(history),
         "device": device.type,
+        "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else device.type,
     }
     return result

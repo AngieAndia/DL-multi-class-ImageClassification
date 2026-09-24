@@ -52,9 +52,13 @@ if torch.cuda.is_available():
 def dataloader_kwargs(device: torch.device) -> dict:
     """num_workers/pin_memory tuned per backend. Throughput only -- does not
     affect any reported metric."""
+#    if device.type == "cuda":
+#        return {"num_workers": 2, "pin_memory": True, "persistent_workers": True}
+#    return {"num_workers": 0, "pin_memory": False, "persistent_workers": False}
+
     if device.type == "cuda":
-        return {"num_workers": 2, "pin_memory": True, "persistent_workers": True}
-    return {"num_workers": 0, "pin_memory": False, "persistent_workers": False}
+        return {"num_workers": min(os.cpu_count() or 2, 8),
+                "pin_memory": True, "persistent_workers": True}
 
 
 # ---------------------------------------------------------------------------
