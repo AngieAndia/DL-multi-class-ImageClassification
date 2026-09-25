@@ -76,32 +76,50 @@ def evaluate(model, loader, criterion, device):
     all_labels = torch.cat(all_labels).numpy()
     return total_loss / total_n, total_correct / total_n, all_preds, all_labels
 
+class BestCheckpoint: 
 
-class EarlyStopper:
-    """Early stopping on validation loss. Remembers the best-so-far weights
-    and restores them after training stops, so the evaluated model is always
-    the best-on-validation checkpoint, never just the last epoch."""
-
-    def __init__(self, patience: int):
-        self.patience = patience
+    def __init__(self):
         self.best_loss = float("inf")
-        self.counter = 0
         self.best_state = None
         self.best_epoch = -1
 
-    def step(self, val_loss: float, model: nn.Module, epoch: int) -> bool:
+    def update(self, val_loss: float, model: nn.Module, epoch: int):
         if val_loss < self.best_loss:
             self.best_loss = val_loss
-            self.counter = 0
             self.best_epoch = epoch
             self.best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-            return False
-        self.counter += 1
-        return self.counter >= self.patience
 
     def restore_best(self, model: nn.Module):
         if self.best_state is not None:
             model.load_state_dict(self.best_state)
+
+
+
+#class EarlyStopper:
+#    """Early stopping on validation loss. Remembers the best-so-far weights
+#    and restores them after training stops, so the evaluated model is always
+#    the best-on-validation checkpoint, never just the last epoch."""
+#
+#    def __init__(self, patience: int):
+#        self.patience = patience
+#        self.best_loss = float("inf")
+#        self.counter = 0
+#        self.best_state = None
+#        self.best_epoch = -1
+#
+#    def step(self, val_loss: float, model: nn.Module, epoch: int) -> bool:
+#        if val_loss < self.best_loss:
+#            self.best_loss = val_loss
+#            self.counter = 0
+#            self.best_epoch = epoch
+#            self.best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+#            return False
+#        self.counter += 1
+#        return self.counter >= self.patience
+#
+#    def restore_best(self, model: nn.Module):
+#        if self.best_state is not None:
+#            model.load_state_dict(self.best_state)
 
 
 def run_training(
@@ -113,7 +131,7 @@ def run_training(
     train_idx,
     val_idx,
     epochs: int,
-    patience: int,
+    #patience: int,
     batch_size: int = BATCH_SIZE,
     subset_size: int | None = None,
     device: torch.device = DEVICE,
@@ -145,26 +163,28 @@ def run_training(
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP and AMP_DTYPE == torch.float16)
 
     # Warmup
-    warmup_epochs = 3
-    warmup_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer, start_factor=0.01, total_iters=warmup_epochs
-    )
-    cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=epochs - warmup_epochs
-    )
-    scheduler = optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[warmup_scheduler, cosine_scheduler],
-        milestones=[warmup_epochs],
-    )
-    stopper = EarlyStopper(patience=patience)
+    #warmup_epochs = 3
+    #warmup_scheduler = optim.lr_scheduler.LinearLR(
+    #    optimizer, start_factor=0.01, total_iters=warmup_epochs
+    #)
+    #cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+    #    optimizer, T_max=epochs - warmup_epochs
+    #)
+    #scheduler = optim.lr_scheduler.SequentialLR(
+    #    optimizer,
+    #    schedulers=[warmup_scheduler, cosine_scheduler],
+    #    milestones=[warmup_epochs],
+    #)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    checkpoint = BestCheckpoint()
+    #stopper = EarlyStopper(patience=patience)
 
 
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     t0 = time.time()
     epochs_run = 0
-    early_stopped = False
+    #early_stopped = False
 
     for epoch in range(epochs):
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
@@ -184,13 +204,15 @@ def run_training(
                 f"train_acc={train_acc:.3f} val_acc={val_acc:.3f}"
             )
 
-        if stopper.step(val_loss, model, epoch):
-            early_stopped = True
-            if verbose:
-                print(f"  [{config_id} seed={seed}] early stopping at epoch {epoch + 1}")
-            break
+        checkpoint.update(val_loss, model, epoch)
 
-    stopper.restore_best(model)
+        #if stopper.step(val_loss, model, epoch):
+        #    early_stopped = True
+        #    if verbose:
+        #        print(f"  [{config_id} seed={seed}] early stopping at epoch {epoch + 1}")
+        #    break
+
+    checkpoint.restore_best(model)
     train_time_seconds = time.time() - t0
 
     test_loss, test_acc, preds, labels = evaluate(model, test_loader, criterion, device)
@@ -208,9 +230,9 @@ def run_training(
         "batch_size": batch_size,
         "epoch_budget": epochs,
         "epochs_run": epochs_run,
-        "early_stopped": early_stopped,
-        "best_epoch": stopper.best_epoch + 1,
-        "best_val_loss": stopper.best_loss,
+        "early_stopped": False,
+        "best_epoch": checkpoint.best_epoch + 1,
+        "best_val_loss": checkpoint.best_loss,
         "train_time_seconds": train_time_seconds,
         "num_params": n_params,
         "test_loss": test_loss,

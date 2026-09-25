@@ -96,12 +96,12 @@ BATCH_SIZE = 128
 # value and the patience below apply identically to every one of the 7
 # configurations, per the OFAT control requirement.
 FULL_RUN_EPOCHS = 25
-FULL_RUN_PATIENCE = 7
+#FULL_RUN_PATIENCE = 7
 
 # Smoke-test settings: small subset, few epochs, low patience -- purpose is
 # only to catch bugs cheaply, not to produce meaningful numbers.
 SMOKE_SUBSET_SIZE = 1000
 SMOKE_EPOCHS = 2
-SMOKE_PATIENCE = 2
+#SMOKE_PATIENCE = 2
 
 RESULTS_CSV_DEFAULT = "all_results.csv"
