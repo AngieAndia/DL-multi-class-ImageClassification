@@ -1,0 +1,13 @@
+\begin{table}[t]
+\caption{Architecture study: mean $\pm$ std over 3 seeds.}
+\label{tab:architecture}
+\begin{tabular}{llrccr}
+\toprule
+ID & Architecture & Params & Accuracy (\%) & Macro-F1 & Train time (s) \\
+\midrule
+C2 & Simple CNN & 0.6 M & 78.9 $\pm$ 12.0 & 0.786 $\pm$ 0.124 & 79 \\
+C1 & ResNet-18 & 11.2 M & 93.2 $\pm$ 0.1 & 0.932 $\pm$ 0.001 & 162 \\
+C3 & DenseNet-121 & 7.0 M & 94.0 $\pm$ 0.3 & 0.940 $\pm$ 0.003 & 781 \\
+\bottomrule
+\end{tabular}
+\end{table}

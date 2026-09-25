@@ -1,0 +1,13 @@
+\begin{table}[t]
+\caption{Optimizer study: mean $\pm$ std over 3 seeds.}
+\label{tab:optimizer}
+\begin{tabular}{llrccr}
+\toprule
+ID & Optimizer & Params & Accuracy (\%) & Macro-F1 & Train time (s) \\
+\midrule
+C1 & SGD (Nesterov) & 11.2 M & 93.2 $\pm$ 0.1 & 0.932 $\pm$ 0.001 & 162 \\
+C6 & Adam & 11.2 M & 92.3 $\pm$ 0.1 & 0.923 $\pm$ 0.001 & 154 \\
+C7 & AdamW & 11.2 M & 92.0 $\pm$ 0.1 & 0.920 $\pm$ 0.001 & 152 \\
+\bottomrule
+\end{tabular}
+\end{table}

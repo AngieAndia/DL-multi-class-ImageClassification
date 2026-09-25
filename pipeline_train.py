@@ -34,10 +34,14 @@ def train_one_epoch(model, loader, optimizer, criterion, device, scaler):
         images, labels = images.to(device), labels.to(device)
 
         optimizer.zero_grad(set_to_none=True)
+
+        # to adapt for the faster gpu from colab A100
         with torch.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=USE_AMP):
             outputs = model(images)
             loss = criterion(outputs, labels)
-        scaler.scale(loss).backward()
+        scaler.scale(loss).backward()  # again because of A100
+
+        # needed for the gradient clipper (first trial without)
         #scaler.unscale_(optimizer)
 
         #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -139,6 +143,8 @@ def run_training(
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(config["optimizer"], model.parameters())
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP and AMP_DTYPE == torch.float16)
+
+    # Warmup
     warmup_epochs = 3
     warmup_scheduler = optim.lr_scheduler.LinearLR(
         optimizer, start_factor=0.01, total_iters=warmup_epochs
@@ -152,6 +158,8 @@ def run_training(
         milestones=[warmup_epochs],
     )
     stopper = EarlyStopper(patience=patience)
+
+
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     t0 = time.time()

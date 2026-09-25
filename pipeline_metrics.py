@@ -121,15 +121,58 @@ def aggregate_over_seeds(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_factor_table(summary_df: pd.DataFrame, factor: str) -> pd.DataFrame:
     """One factor-study table (architecture / augmentation / optimizer),
-    ordered per FACTOR_STUDIES, ready to render as the paper's per-study
-    table (config, level, params, accuracy mean+-std, macro-F1 mean+-std)."""
+    ordered per FACTOR_STUDIES, formatted for the paper: accuracy in % with
+    1 decimal, macro-F1 with 3 decimals, both as mean ± std over seeds.
+    Rounding happens only here, at display time -- all aggregation upstream
+    uses full precision."""
     config_order = FACTOR_STUDIES[factor]
     table = summary_df[summary_df["config_id"].isin(config_order)].copy()
     table["config_id"] = pd.Categorical(table["config_id"], categories=config_order, ordered=True)
-    return table.sort_values("config_id").reset_index(drop=True)
+    table = table.sort_values("config_id").reset_index(drop=True)
 
+    table["Params"] = (table["num_params"] / 1e6).map(lambda x: f"{x:.1f} M")
+    table["Accuracy (%)"] = [
+        f"{m*100:.1f} ± {s*100:.1f}" for m, s in zip(table["accuracy_mean"], table["accuracy_std"])
+    ]
+    table["Macro-F1"] = [
+        f"{m:.3f} ± {s:.3f}" for m, s in zip(table["macro_f1_mean"], table["macro_f1_std"])
+    ]
+    table["Train time (s)"] = table["train_time_mean"].round(0).astype(int)
+    return table[["config_id", factor, "Params", "Accuracy (%)", "Macro-F1", "Train time (s)"]]
 
 def best_worst_config_ids(summary_df: pd.DataFrame) -> tuple:
     """(best_config_id, worst_config_id) by mean test accuracy across seeds."""
     ranked = summary_df.sort_values("accuracy_mean", ascending=False)
     return ranked.iloc[0]["config_id"], ranked.iloc[-1]["config_id"]
+
+# -----------------------------
+# Export tables to LateX
+# -----------------------------
+
+PRETTY_NAMES = {
+    "simple_cnn": "Simple CNN", "resnet18": "ResNet-18", "densenet121": "DenseNet-121",
+    "none": "None", "crop_flip": "Crop + flip", "strong": "Crop + flip + RandAug. + erasing",
+    "sgd": "SGD (Nesterov)", "adam": "Adam", "adamw": "AdamW",
+}
+
+def factor_table_to_latex(table: pd.DataFrame, factor: str, path: str) -> None:
+    """Writes one formatted factor table (output of build_factor_table)
+    to a .tex file, ready to \\input{} into the paper."""
+    t = table.copy()
+    t["config_id"] = t["config_id"].astype(str)
+    t[factor] = t[factor].map(lambda x: PRETTY_NAMES.get(x, x))
+    for col in ["Accuracy (%)", "Macro-F1"]:
+        t[col] = t[col].str.replace("±", r"$\pm$", regex=False)
+    t = t.rename(columns={
+        "config_id": "ID",
+        factor: factor.capitalize(),
+        "Accuracy (%)": r"Accuracy (\%)",
+    })
+    t.to_latex(
+        path,
+        index=False,
+        column_format="llrccr",
+        caption=f"{factor.capitalize()} study: mean $\\pm$ std over 3 seeds.",
+        label=f"tab:{factor}",
+        position="t",
+    )
