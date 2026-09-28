@@ -1,8 +1,8 @@
 """
 pipeline_train.py
 ====================
-The mechanical core: one epoch of training, one evaluation pass, early
-stopping, and run_training() -- the single function every one of the 21
+The mechanical core: one epoch of training, one evaluation pass, and 
+run_training() -- the single function every one of the 21
 runs calls. Only the config dict and seed change between calls; everything
 else (loss function, model-selection rule, evaluation code) is identical
 across every run, which is what makes the OFAT design actually controlled.
@@ -22,6 +22,7 @@ from pipeline_data import DEVICE, make_loaders, set_seed
 from pipeline_models import ARCHITECTURES, build_optimizer, count_params
 from pipeline_metrics import compute_metrics
 
+# for the A100 gpu
 USE_AMP = DEVICE.type == "cuda"
 AMP_DTYPE = (torch.bfloat16 if USE_AMP and torch.cuda.is_bf16_supported()
              else torch.float16)
@@ -41,10 +42,6 @@ def train_one_epoch(model, loader, optimizer, criterion, device, scaler):
             loss = criterion(outputs, labels)
         scaler.scale(loss).backward()  # again because of A100
 
-        # needed for the gradient clipper (first trial without)
-        #scaler.unscale_(optimizer)
-
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         scaler.step(optimizer)
         scaler.update()
 
@@ -94,34 +91,6 @@ class BestCheckpoint:
             model.load_state_dict(self.best_state)
 
 
-
-#class EarlyStopper:
-#    """Early stopping on validation loss. Remembers the best-so-far weights
-#    and restores them after training stops, so the evaluated model is always
-#    the best-on-validation checkpoint, never just the last epoch."""
-#
-#    def __init__(self, patience: int):
-#        self.patience = patience
-#        self.best_loss = float("inf")
-#        self.counter = 0
-#        self.best_state = None
-#        self.best_epoch = -1
-#
-#    def step(self, val_loss: float, model: nn.Module, epoch: int) -> bool:
-#        if val_loss < self.best_loss:
-#            self.best_loss = val_loss
-#            self.counter = 0
-#            self.best_epoch = epoch
-#            self.best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-#            return False
-#        self.counter += 1
-#        return self.counter >= self.patience
-#
-#    def restore_best(self, model: nn.Module):
-#        if self.best_state is not None:
-#            model.load_state_dict(self.best_state)
-
-
 def run_training(
     config_id: str,
     config: dict,
@@ -131,15 +100,13 @@ def run_training(
     train_idx,
     val_idx,
     epochs: int,
-    #patience: int,
     batch_size: int = BATCH_SIZE,
-    subset_size: int | None = None,
     device: torch.device = DEVICE,
     verbose: bool = True,
 ) -> dict:
     """Runs one full training run for one (configuration, seed) pair and
     returns a flat dict ready to be appended as one row of all_results.csv.
-    Trains -> early-stops on val loss -> restores best weights -> evaluates
+    Trains -> restores best weights -> evaluates
     once on the held-out test set.
     """
     set_seed(seed)
@@ -151,7 +118,6 @@ def run_training(
         train_idx=train_idx,
         val_idx=val_idx,
         batch_size=batch_size,
-        subset_size=subset_size,
         seed_for_shuffle=seed,
         device=device,
     )
@@ -162,29 +128,12 @@ def run_training(
     optimizer = build_optimizer(config["optimizer"], model.parameters())
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP and AMP_DTYPE == torch.float16)
 
-    # Warmup
-    #warmup_epochs = 3
-    #warmup_scheduler = optim.lr_scheduler.LinearLR(
-    #    optimizer, start_factor=0.01, total_iters=warmup_epochs
-    #)
-    #cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-    #    optimizer, T_max=epochs - warmup_epochs
-    #)
-    #scheduler = optim.lr_scheduler.SequentialLR(
-    #    optimizer,
-    #    schedulers=[warmup_scheduler, cosine_scheduler],
-    #    milestones=[warmup_epochs],
-    #)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     checkpoint = BestCheckpoint()
-    #stopper = EarlyStopper(patience=patience)
-
-
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     t0 = time.time()
     epochs_run = 0
-    #early_stopped = False
 
     for epoch in range(epochs):
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
@@ -206,12 +155,6 @@ def run_training(
 
         checkpoint.update(val_loss, model, epoch)
 
-        #if stopper.step(val_loss, model, epoch):
-        #    early_stopped = True
-        #    if verbose:
-        #        print(f"  [{config_id} seed={seed}] early stopping at epoch {epoch + 1}")
-        #    break
-
     checkpoint.restore_best(model)
     train_time_seconds = time.time() - t0
 
@@ -230,7 +173,6 @@ def run_training(
         "batch_size": batch_size,
         "epoch_budget": epochs,
         "epochs_run": epochs_run,
-        "early_stopped": False,
         "best_epoch": checkpoint.best_epoch + 1,
         "best_val_loss": checkpoint.best_loss,
         "train_time_seconds": train_time_seconds,

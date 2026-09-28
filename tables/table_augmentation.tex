@@ -1,0 +1,13 @@
+\begin{table}[t]
+\caption{Augmentation study: mean $\pm$ std over 3 seeds. $\Delta$ is the difference to the baseline C1 in accuracy points.}
+\label{tab:augmentation}
+\begin{tabular}{llrcccr}
+\toprule
+ID & Augmentation & Params & Acc. (\%) & Macro-F1 & $\Delta$ (pp) & s/epoch \\
+\midrule
+C4 & None & 11.17 M & 87.14 $\pm$ 0.26 & 0.871 $\pm$ 0.003 & -5.30 & 5.7 \\
+C1 & Crop + flip & 11.17 M & 92.44 $\pm$ 0.42 & 0.924 $\pm$ 0.004 & -- & 6.5 \\
+C5 & Crop + flip + AutoAugment + erasing & 11.17 M & 92.20 $\pm$ 0.70 & 0.922 $\pm$ 0.007 & -0.24 & 7.5 \\
+\bottomrule
+\end{tabular}
+\end{table}

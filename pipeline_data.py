@@ -45,20 +45,17 @@ DEVICE = get_device()
 
 if torch.cuda.is_available():
     # Lets cuDNN pick the fastest convolution algorithm for our fixed 32x32
-    # input size. Speed-only knob -- has no effect on what gets computed.
+    # input size. Has no effect on what gets computed.
     torch.backends.cudnn.benchmark = True
 
 
 def dataloader_kwargs(device: torch.device) -> dict:
     """num_workers/pin_memory tuned per backend. Throughput only -- does not
     affect any reported metric."""
-#    if device.type == "cuda":
-#        return {"num_workers": 2, "pin_memory": True, "persistent_workers": True}
-#    return {"num_workers": 0, "pin_memory": False, "persistent_workers": False}
-
     if device.type == "cuda":
         return {"num_workers": min(os.cpu_count() or 2, 8),
                 "pin_memory": True, "persistent_workers": True}
+    return {"num_workers": 0, "pin_memory": False}
 
 
 # ---------------------------------------------------------------------------
@@ -100,17 +97,12 @@ AUGMENTATIONS = {
     "strong": T.Compose([
         T.RandomCrop(32, padding=4),
         T.RandomHorizontalFlip(),
-        # AutoAugment's CIFAR10 policy (Cubuk et al., 2019) was found by search
-        # directly on this dataset, unlike RandAugment's generic, un-searched
-        # policy -- since we aren't redoing that search ourselves, the
-        # dataset-specific found policy is the better-justified citation here.
         T.AutoAugment(T.AutoAugmentPolicy.CIFAR10),
         T.ToTensor(),
         T.Normalize(CIFAR_MEAN, CIFAR_STD),
-        T.RandomErasing(p=0.25),  # Zhong et al., 2020 -- unchanged, last step
+        T.RandomErasing(p=0.25),  
     ]),
 }
-
 
 # ---------------------------------------------------------------------------
 # Dataset loading and the one fixed stratified split
@@ -177,21 +169,17 @@ def make_loaders(
     val_idx,
     batch_size: int,
     eval_batch_size: int | None = None,
-    subset_size: int | None = None,
     seed_for_shuffle: int | None = None,
     device: torch.device = DEVICE,
 ):
     """Builds train/val/test DataLoaders for one augmentation strategy.
-
-    subset_size: if set, use only this many TRAINING images (smoke test).
     eval_batch_size: batch size for val/test loaders only -- a throughput
     knob (no gradients there), free to differ from the training batch size.
     """
     eval_batch_size = eval_batch_size or batch_size
     train_transform = AUGMENTATIONS[aug_name]
 
-    t_idx = train_idx if subset_size is None else train_idx[:subset_size]
-    train_ds = TransformedSubset(full_train, t_idx, train_transform)
+    train_ds = TransformedSubset(full_train, train_idx, train_transform)
     val_ds = TransformedSubset(full_train, val_idx, eval_transform)
 
     generator = None

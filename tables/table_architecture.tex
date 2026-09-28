@@ -1,0 +1,13 @@
+\begin{table}[t]
+\caption{Architecture study: mean $\pm$ std over 3 seeds. $\Delta$ is the difference to the baseline C1 in accuracy points.}
+\label{tab:architecture}
+\begin{tabular}{llrcccr}
+\toprule
+ID & Architecture & Params & Acc. (\%) & Macro-F1 & $\Delta$ (pp) & s/epoch \\
+\midrule
+C2 & Simple CNN & 0.62 M & 83.71 $\pm$ 1.05 & 0.837 $\pm$ 0.010 & -8.73 & 3.8 \\
+C1 & ResNet-18 & 11.17 M & 92.44 $\pm$ 0.42 & 0.924 $\pm$ 0.004 & -- & 6.5 \\
+C3 & DenseNet-121 & 6.96 M & 93.79 $\pm$ 0.30 & 0.938 $\pm$ 0.003 & +1.35 & 30.3 \\
+\bottomrule
+\end{tabular}
+\end{table}

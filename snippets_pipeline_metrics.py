@@ -1,85 +1,27 @@
 """
-pipeline_metrics.py
-=====================
-Turning predictions into numbers, saving/loading
-the results file, and aggregating across the 3 seeds. 
+snippets_pipeline_metrics.py
+=============================
+NOT a module to import. Copy each block into pipeline_metrics.py at the place
+its header says. Step numbers match the outline in the chat.
 """
 
-from __future__ import annotations
-
-import json
-import os
-
-import numpy as np
-import pandas as pd
-from sklearn.metrics import confusion_matrix as sk_confusion_matrix
-from sklearn.metrics import precision_recall_fscore_support
-
+# ==========================================================================
+# STEP 1 — REPLACE the import line from pipeline_config with this one
+# ==========================================================================
 from pipeline_config import (
     BASELINE_ID, CLASS_NAMES, CONFIGS, FACTOR_STUDIES, PRETTY_NAMES,
     RESULTS_CSV_DEFAULT, SEEDS,
 )
 
 
-# ---------------------------------------------------------------------------
-# Per-run metrics
-# ---------------------------------------------------------------------------
+# ==========================================================================
+# STEP 3 — ADD directly below load_results()
+# ==========================================================================
 
-def compute_metrics(preds, labels, class_names=CLASS_NAMES) -> dict:
-    """
-    Metrics for ONE run.
-
-    Averaging convention used throughout: macro averaging for F1/precision/
-    recall (every class weighted equally, regardless of support)
-    """
-    accuracy = float((preds == labels).mean())
-    precision, recall, f1, support = precision_recall_fscore_support(
-        labels, preds, labels=list(range(len(class_names))), average=None, zero_division=0
-    )
-    macro_f1 = float(f1.mean())
-    cm = sk_confusion_matrix(labels, preds, labels=list(range(len(class_names))))
-
-    return {
-        "accuracy": accuracy,
-        "macro_f1": macro_f1,
-        "precision_per_class": {c: float(p) for c, p in zip(class_names, precision)},
-        "recall_per_class": {c: float(r) for c, r in zip(class_names, recall)},
-        "f1_per_class": {c: float(f) for c, f in zip(class_names, f1)},
-        "confusion_matrix": cm.tolist(),
-    }
-
-
-def mean_confusion_matrix(list_of_cms) -> np.ndarray:
-    # Element-wise mean of the 3 per-seed confusion matrices for one config
-    arr = np.stack([np.asarray(cm, dtype=float) for cm in list_of_cms], axis=0)
-    return arr.mean(axis=0)
-
-
-# ---------------------------------------------------------------------------
-# Results file 
-# ---------------------------------------------------------------------------
-
-def append_result(result: dict, csv_path: str = RESULTS_CSV_DEFAULT) -> None:
-    """
-    Appends one run's result as a new row, writing the header only if the
-    file does not exist yet. Called after every single run. 
-    """
-    row_df = pd.DataFrame([result])
-    file_exists = os.path.exists(csv_path)
-    row_df.to_csv(csv_path, mode="a", header=not file_exists, index=False)
-
-
-def load_results(csv_path: str = RESULTS_CSV_DEFAULT) -> pd.DataFrame:
-    if not os.path.exists(csv_path):
-        return pd.DataFrame()
-    return pd.read_csv(csv_path)
-
-# added after the duplicate c1 s0 we had
 def check_results_complete(df: pd.DataFrame) -> None:
-    """
-    No missing runs and no duplicates. A duplicate
-    would silently turn a 3-seed mean into a 4-seed mean.
-    """
+    """Fails loudly unless the results file holds exactly one row per
+    (config, seed) pair -- no missing runs and no duplicates. A duplicate
+    would silently turn a 3-seed mean into a 4-seed mean."""
     expected = {(c, s) for c in CONFIGS for s in SEEDS}
     found = list(zip(df["config_id"], df["seed"]))
     duplicates = sorted({p for p in found if found.count(p) > 1})
@@ -87,25 +29,14 @@ def check_results_complete(df: pd.DataFrame) -> None:
     if duplicates or missing:
         raise ValueError(f"Results file is not clean. Duplicates: {duplicates}  Missing: {missing}")
 
-# ---------------------------------------------------------------------------
-# Aggregation across seeds
-# ---------------------------------------------------------------------------
-
-def decode_json_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Parses the JSON-string columns written by run_training back into
-    Python objects (dicts / nested lists) for downstream analysis."""
-    df = df.copy()
-    for col in ["precision_per_class", "recall_per_class", "f1_per_class", "confusion_matrix", "history"]:
-        if col in df.columns:
-            df[col] = df[col].apply(json.loads)
-    return df
+# ==========================================================================
+# STEP 4 — REPLACE the existing aggregate_over_seeds()
+# ==========================================================================
 
 def aggregate_over_seeds(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Per-config mean +/- std over the 3 seeds. Computed from the per-run
+    """Per-config mean +/- std over the 3 seeds. Computed from the per-run
     values (one row per run) -- never from pooled predictions.
-    Also adds the difference to the baseline (C1) in accuracy points.
-    """
+    Also adds the difference to the baseline (C1) in accuracy points."""
     df = df.copy()
     df["time_per_epoch"] = df["train_time_seconds"] / df["epochs_run"]
     summary = df.groupby("config_id").agg(
@@ -128,22 +59,28 @@ def aggregate_over_seeds(df: pd.DataFrame) -> pd.DataFrame:
     summary["delta_vs_C1_pp"] = (summary["accuracy_mean"] - base_acc) * 100
     return summary
 
+# ==========================================================================
+# STEP 5 — ADD below aggregate_over_seeds()
+# ==========================================================================
+
 def train_val_gap(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Final-epoch train accuracy minus val accuracy, mean over seeds, in
-    percentage points. 
-    """
+    """Final-epoch train accuracy minus val accuracy, mean over seeds, in
+    percentage points. Answers the brief's question on how the train/val gap
+    behaves as augmentation gets stronger (Section 3.7)."""
     rows = []
     for cid, g in df.groupby("config_id"):
         gaps = [(h["train_acc"][-1] - h["val_acc"][-1]) * 100 for h in g["history"]]
         rows.append({"config_id": cid, "train_val_gap_pp": float(np.mean(gaps))})
     return pd.DataFrame(rows)
 
+# ==========================================================================
+# STEP 5 — ADD below train_val_gap()
+# ==========================================================================
+
 def convergence_epoch(df: pd.DataFrame, threshold: float = 0.85) -> pd.DataFrame:
-    """
-    First epoch (1-based) at which validation accuracy reaches `threshold`,
-    per run. A run that never reaches the threshold gets NaN.
-    """
+    """First epoch (1-based) at which validation accuracy reaches `threshold`,
+    per run. Used for the optimiser study's 'convergence speed' claim.
+    A run that never reaches the threshold gets NaN."""
     rows = []
     for _, r in df.iterrows():
         va = np.asarray(r["history"]["val_acc"])
@@ -154,11 +91,16 @@ def convergence_epoch(df: pd.DataFrame, threshold: float = 0.85) -> pd.DataFrame
         })
     return pd.DataFrame(rows)
 
+# ==========================================================================
+# STEP 6 — REPLACE the existing build_factor_table()
+# ==========================================================================
+
 def build_factor_table(summary_df: pd.DataFrame, factor: str) -> pd.DataFrame:
-    """
-    One factor-study table (architecture / augmentation / optimizer),
-    ordered per FACTOR_STUDIES. Rounding happens only here, at display time.
-    """
+    """One factor-study table (architecture / augmentation / optimizer),
+    ordered per FACTOR_STUDIES, formatted for the paper: accuracy in % with
+    2 decimals, macro-F1 with 3 decimals, both as mean ± std over seeds, the
+    difference to C1 in percentage points, parameters and time per epoch.
+    Rounding happens only here, at display time."""
     config_order = FACTOR_STUDIES[factor]
     table = summary_df[summary_df["config_id"].isin(config_order)].copy()
     table["config_id"] = pd.Categorical(table["config_id"], categories=config_order, ordered=True)
@@ -180,10 +122,9 @@ def build_factor_table(summary_df: pd.DataFrame, factor: str) -> pd.DataFrame:
     return table[["config_id", factor, "Params", "Accuracy (%)", "Macro-F1",
                   "Δ vs C1 (pp)", "Time/epoch (s)"]]
 
-def best_worst_config_ids(summary_df: pd.DataFrame) -> tuple:
-    """(best_config_id, worst_config_id) by mean test accuracy across seeds."""
-    ranked = summary_df.sort_values("accuracy_mean", ascending=False)
-    return ranked.iloc[0]["config_id"], ranked.iloc[-1]["config_id"]
+# ==========================================================================
+# STEP 7 — ADD below best_worst_config_ids()
+# ==========================================================================
 
 def per_class_table(df: pd.DataFrame, config_id: str) -> pd.DataFrame:
     """Per-class precision / recall / F1 for one config, mean and std over
@@ -200,20 +141,25 @@ def per_class_table(df: pd.DataFrame, config_id: str) -> pd.DataFrame:
     out.index.name = "class"
     return out.round(3)
 
+# ==========================================================================
+# STEP 7 — ADD below per_class_table()
+# ==========================================================================
+
 def recall_by_class_all_configs(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Mean per-class recall for every config (rows = classes, cols = configs).
-    """
+    """Mean per-class recall for every config (rows = classes, cols = configs).
+    Shows whether the hardest class is the same everywhere (Section 3.7)."""
     out = {}
     for cid, g in df.groupby("config_id"):
         out[cid] = pd.DataFrame(g["recall_per_class"].tolist()).mean()
     return pd.DataFrame(out).round(3)
 
+# ==========================================================================
+# STEP 7 — ADD below recall_by_class_all_configs()
+# ==========================================================================
+
 def top_confusions(df: pd.DataFrame, config_id: str, k: int = 4) -> pd.DataFrame:
-    """
-    The k class pairs confused most often (both directions summed),
-    from the element-wise mean confusion matrix over seeds.
-    """
+    """The k class pairs confused most often (both directions summed),
+    from the element-wise mean confusion matrix over seeds."""
     cm = mean_confusion_matrix(df.loc[df["config_id"] == config_id, "confusion_matrix"].tolist())
     pairs = []
     for i in range(len(CLASS_NAMES)):
@@ -221,9 +167,10 @@ def top_confusions(df: pd.DataFrame, config_id: str, k: int = 4) -> pd.DataFrame
             pairs.append((CLASS_NAMES[i], CLASS_NAMES[j], cm[i, j] + cm[j, i]))
     out = pd.DataFrame(pairs, columns=["class_a", "class_b", "mean_errors"])
     return out.sort_values("mean_errors", ascending=False).head(k).round(1).reset_index(drop=True)
-# -----------------------------
-# Export tables to LateX
-# -----------------------------
+
+# ==========================================================================
+# STEP 8 — REPLACE the existing factor_table_to_latex() (and delete the PRETTY_NAMES dict above it)
+# ==========================================================================
 
 def factor_table_to_latex(table: pd.DataFrame, factor: str, path: str) -> None:
     """Writes one formatted factor table (output of build_factor_table)

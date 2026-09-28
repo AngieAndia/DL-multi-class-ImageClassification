@@ -1,0 +1,13 @@
+\begin{table}[t]
+\caption{Optimizer study: mean $\pm$ std over 3 seeds. $\Delta$ is the difference to the baseline C1 in accuracy points.}
+\label{tab:optimizer}
+\begin{tabular}{llrcccr}
+\toprule
+ID & Optimizer & Params & Acc. (\%) & Macro-F1 & $\Delta$ (pp) & s/epoch \\
+\midrule
+C1 & SGD (Nesterov) & 11.17 M & 92.44 $\pm$ 0.42 & 0.924 $\pm$ 0.004 & -- & 6.5 \\
+C6 & Adam & 11.17 M & 91.14 $\pm$ 1.03 & 0.911 $\pm$ 0.011 & -1.30 & 6.0 \\
+C7 & AdamW & 11.17 M & 91.49 $\pm$ 0.31 & 0.915 $\pm$ 0.003 & -0.96 & 5.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
