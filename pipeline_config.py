@@ -24,15 +24,25 @@ VAL_FRACTION = 0.10      # 5,000 of the 50,000 training images
 SPLIT_CACHE_PATH = "val_split_indices.npz"
 
 # ---------------------------------------------------------------------------
-# Optimizer defaults (Factor 3) - literature-based, per-optimizer LR/decay.
+# Optimizer settings
 # ---------------------------------------------------------------------------
 
-OPTIMIZER_DEFAULTS = {
-    "sgd": {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "nesterov": True},
-    "adam": {"lr": 0.001, "weight_decay": 1e-4},
-    "adamw": {"lr": 0.001, "weight_decay": 5e-4},
-}
+WEIGHT_DECAY = 5e-4
 
+LR_GRID = {
+    "sgd":   [0.05, 0.1, 0.2],
+    "adam":  [3e-4, 1e-3, 3e-3],
+    "adamw": [3e-4, 1e-3, 3e-3],
+}
+LR_SEARCH_SEED = 0
+LR_SEARCH_CSV = "lr_search_results.csv"
+
+
+OPTIMIZER_DEFAULTS = {
+    "sgd":   {"lr": 0.1,   "momentum": 0.9, "nesterov": True, "weight_decay": WEIGHT_DECAY},
+    "adam":  {"lr": 0.001, "weight_decay": WEIGHT_DECAY},
+    "adamw": {"lr": 0.001, "weight_decay": WEIGHT_DECAY},
+}
 # ---------------------------------------------------------------------------
 # The 7-configuration OFAT design 
 # ---------------------------------------------------------------------------

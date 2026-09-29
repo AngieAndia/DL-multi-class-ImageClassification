@@ -74,8 +74,10 @@ def count_params(model: nn.Module) -> int:
 # Optimizers -- values can be found in pipeline_config.OPTIMIZER_DEFAULTS
 # ---------------------------------------------------------------------------
 
-def build_optimizer(name: str, params) -> optim.Optimizer:
+def build_optimizer(name: str, params, lr: float | None = None) -> optim.Optimizer:
     cfg = dict(OPTIMIZER_DEFAULTS[name])
+    if lr is not None:
+        cfg["lr"] = lr
     if name == "sgd":
         return optim.SGD(params, **cfg)
     if name == "adam":

@@ -103,6 +103,8 @@ def run_training(
     batch_size: int = BATCH_SIZE,
     device: torch.device = DEVICE,
     verbose: bool = True,
+        lr: float | None = None,
+    evaluate_test: bool = True,
 ) -> dict:
     """Runs one full training run for one (configuration, seed) pair and
     returns a flat dict ready to be appended as one row of all_results.csv.
@@ -125,7 +127,7 @@ def run_training(
     model = ARCHITECTURES[config["architecture"]]().to(device)
     n_params = count_params(model)
     criterion = nn.CrossEntropyLoss()
-    optimizer = build_optimizer(config["optimizer"], model.parameters())
+    optimizer = build_optimizer(config["optimizer"], model.parameters(), lr=lr)
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP and AMP_DTYPE == torch.float16)
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
@@ -158,6 +160,24 @@ def run_training(
     checkpoint.restore_best(model)
     train_time_seconds = time.time() - t0
 
+    opt_cfg = OPTIMIZER_DEFAULTS[config["optimizer"]]
+    used_lr = lr if lr is not None else opt_cfg["lr"]
+
+    # LR search mode: validation only, the test set is never touched
+    if not evaluate_test:
+        _, best_val_acc, _, _ = evaluate(model, val_loader, criterion, device)
+        return {
+            "optimizer": config["optimizer"],
+            "seed": seed,
+            "lr": used_lr,
+            "weight_decay": opt_cfg["weight_decay"],
+            "best_epoch": checkpoint.best_epoch + 1,
+            "best_val_loss": checkpoint.best_loss,
+            "best_val_acc": best_val_acc,
+            "train_time_seconds": train_time_seconds,
+            "history": json.dumps(history),
+        }
+
     test_loss, test_acc, preds, labels = evaluate(model, test_loader, criterion, device)
     metrics = compute_metrics(preds, labels)
 
@@ -168,7 +188,7 @@ def run_training(
         "augmentation": config["augmentation"],
         "optimizer": config["optimizer"],
         "seed": seed,
-        "lr": opt_cfg["lr"],
+        "lr": used_lr,
         "weight_decay": opt_cfg["weight_decay"],
         "batch_size": batch_size,
         "epoch_budget": epochs,
