@@ -3,12 +3,7 @@ pipeline_data.py
 =================
 Everything about getting CIFAR-10 into batches: device detection,
 reproducibility, the three augmentation strategies, the stratified
-train/val split (cached to disk so it's identical for both group members
-and every run), and the DataLoader builder.
-
-Importing this module does not download data or run anything -- that only
-happens the first time load_raw_datasets() / get_stratified_split() is
-actually called.
+train/val split, and the DataLoader builder.
 """
 
 from __future__ import annotations
@@ -44,10 +39,7 @@ def get_device() -> torch.device:
 DEVICE = get_device()
 
 if torch.cuda.is_available():
-    # Lets cuDNN pick the fastest convolution algorithm for our fixed 32x32
-    # input size. Has no effect on what gets computed.
     torch.backends.cudnn.benchmark = True
-
 
 def dataloader_kwargs(device: torch.device) -> dict:
     """num_workers/pin_memory tuned per backend. Throughput only -- does not
@@ -109,30 +101,25 @@ AUGMENTATIONS = {
 # ---------------------------------------------------------------------------
 
 def load_raw_datasets(root: str = DATA_ROOT):
-    """Downloads CIFAR-10 if needed. full_train has no transform attached yet
+    """
+    Downloads CIFAR-10 if needed. full_train has no transform attached yet
     (each augmentation is applied per-config by TransformedSubset). test_set
-    always uses the fixed eval_transform."""
+    always uses the fixed eval_transform.
+    """
     full_train = torchvision.datasets.CIFAR10(root=root, train=True, download=True)
     test_set = torchvision.datasets.CIFAR10(
         root=root, train=False, download=True, transform=eval_transform
     )
     return full_train, test_set
 
-
 def get_stratified_split(
     targets,
     val_fraction: float = VAL_FRACTION,
     split_seed: int = SPLIT_SEED,
-    cache_path: str = SPLIT_CACHE_PATH,
 ):
-    """Returns (train_idx, val_idx). Computed once and cached to disk so that
-    every notebook, every run, and both group members' Colab sessions reuse
-    the exact same split -- required by the brief ("create the validation
-    split once and reuse exactly the same split in every configuration")."""
-    if os.path.exists(cache_path):
-        cached = np.load(cache_path)
-        return cached["train_idx"], cached["val_idx"]
-
+    """
+    Returns (train_idx, val_idx).
+    """
     targets = np.asarray(targets)
     train_idx, val_idx = train_test_split(
         np.arange(len(targets)),
@@ -140,12 +127,13 @@ def get_stratified_split(
         stratify=targets,
         random_state=split_seed,
     )
-    np.savez(cache_path, train_idx=train_idx, val_idx=val_idx)
     return train_idx, val_idx
 
 
 class TransformedSubset(Dataset):
-    """Wraps a base CIFAR10 dataset + a fixed list of indices + one transform."""
+    """
+    Wraps a base CIFAR10 dataset + a fixed list of indices + one transform.
+    """
 
     def __init__(self, base_dataset, indices, transform):
         self.base = base_dataset
@@ -172,9 +160,9 @@ def make_loaders(
     seed_for_shuffle: int | None = None,
     device: torch.device = DEVICE,
 ):
-    """Builds train/val/test DataLoaders for one augmentation strategy.
-    eval_batch_size: batch size for val/test loaders only -- a throughput
-    knob (no gradients there), free to differ from the training batch size.
+    """
+    Builds train/val/test DataLoaders for one augmentation strategy.
+    eval_batch_size: batch size for val/test loaders only
     """
     eval_batch_size = eval_batch_size or batch_size
     train_transform = AUGMENTATIONS[aug_name]
